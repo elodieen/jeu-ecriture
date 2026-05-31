@@ -226,11 +226,13 @@ function startChatPhase(session: Session, sessionCode: string, dialogue: Dialogu
 }
 
 async function correctReplique(text: string): Promise<string> {
+  if (!text.trim()) return text;
   try {
     const msg = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 500,
-      messages: [{ role: 'user', content: `Corrige uniquement les fautes d'orthographe et de grammaire dans ce texte. Ne change pas le style, le vocabulaire, les tournures de phrases, ni le sens. Retourne uniquement le texte corrigé sans commentaire.\n\n${text}` }],
+      system: "Tu es un correcteur orthographique. Tu reçois une phrase et tu retournes uniquement la phrase corrigée, sans aucun commentaire, sans guillemets, sans explication.",
+      messages: [{ role: 'user', content: text }],
     });
     return (msg.content[0] as { type: string; text: string }).text.trim();
   } catch {
@@ -241,10 +243,11 @@ async function correctReplique(text: string): Promise<string> {
 async function finishDialogue(session: Session, sessionCode: string, dialogue: Dialogue): Promise<void> {
   dialogue.phase = 'done';
   if (dialogue.chatTimer) { clearTimeout(dialogue.chatTimer); dialogue.chatTimer = null; }
-  const correctedRepliques = await Promise.all(
-    dialogue.repliques.map(async r => ({ ...r, text: await correctReplique(r.text) }))
-  );
-  const payload = { situation: dialogue.situationText, repliques: correctedRepliques };
+  const [correctedSituation, correctedRepliques] = await Promise.all([
+    correctReplique(dialogue.situationText),
+    Promise.all(dialogue.repliques.map(async r => ({ ...r, text: await correctReplique(r.text) }))),
+  ]);
+  const payload = { situation: correctedSituation, repliques: correctedRepliques };
   io.to(dialogue.socketA).emit(EV.DIALOGUE_DONE, payload);
   io.to(dialogue.socketB).emit(EV.DIALOGUE_DONE, payload);
   session.dialogueUsed.add(dialogue.socketA);
@@ -746,11 +749,8 @@ io.on('connection', (socket) => {
     if (!session) return;
     const d = findDialogue(session, socket.id);
     if (!d || d.phase !== 'chat') return;
-    d.terminerSet.add(socket.id);
-    if (d.terminerSet.size >= 2) {
-      if (d.chatTimer) { clearTimeout(d.chatTimer); d.chatTimer = null; }
-      finishDialogue(session, sessionCode, d).catch(err => console.error('[dialogue] finishDialogue error:', err));
-    }
+    if (d.chatTimer) { clearTimeout(d.chatTimer); d.chatTimer = null; }
+    finishDialogue(session, sessionCode, d).catch(err => console.error('[dialogue] finishDialogue error:', err));
   });
 
   // ── histoire:lu ──

@@ -77,8 +77,9 @@ export default function EcritureScreen() {
   const [repliques, setRepliques]         = useState<{ qui: 'moi' | 'autre'; texte: string }[]>([]);
   const [replicueInput, setReplicueInput] = useState('');
   const [tourAMoi, setTourAMoi]           = useState(true);
-  const [myPhase1Ready, setMyPhase1Ready]     = useState(false);
-  const [peerPhase1Ready, setPeerPhase1Ready] = useState(false);
+  const [myPhase1Ready, setMyPhase1Ready]       = useState(false);
+  const [peerPhase1Ready, setPeerPhase1Ready]   = useState(false);
+  const [dialogueCorrecting, setDialogueCorrecting] = useState(false);
 
   const chatScrollRef = useRef<ScrollView>(null);
   const pulseAnim     = useRef(new Animated.Value(1)).current;
@@ -191,6 +192,7 @@ export default function EcritureScreen() {
       setPhase1Sec(60);
       setMyPhase1Ready(false);
       setPeerPhase1Ready(false);
+      setDialogueCorrecting(false);
       setDialogueState('phase1');
     });
 
@@ -222,6 +224,7 @@ export default function EcritureScreen() {
     });
 
     socket.on('dialogue:done', ({ situation, repliques: reps }: { situation: string; repliques: Array<{ characterId: string; text: string }> }) => {
+      setDialogueCorrecting(false);
       const otherCharId = dialogueOtherCharId ?? dialogueTargetRef.current ?? '';
       const otherName = derniereSaison.characters.find(c => c.id === otherCharId)?.name ?? 'Autre';
       const parts: string[] = [];
@@ -268,6 +271,7 @@ export default function EcritureScreen() {
   }
 
   function handleTerminerDialogue() {
+    setDialogueCorrecting(true);
     getSocket().emit('dialogue:terminer');
   }
 
@@ -821,29 +825,38 @@ export default function EcritureScreen() {
               </ScrollView>
 
               <View style={styles.chatInputArea}>
-                <View style={styles.chatInputRow}>
-                  <TextInput
-                    style={styles.chatInput}
-                    value={replicueInput}
-                    onChangeText={setReplicueInput}
-                    placeholder="Votre réplique..."
-                    placeholderTextColor="#444444"
-                    returnKeyType="send"
-                    onSubmitEditing={handleSendReplique}
-                    blurOnSubmit={false}
-                  />
-                  <TouchableOpacity
-                    style={[styles.chatSendBtn, !replicueInput.trim() && styles.chatSendBtnDisabled]}
-                    onPress={handleSendReplique}
-                    disabled={!replicueInput.trim()}
-                  >
-                    <Text style={styles.chatSendBtnText}>Envoyer</Text>
-                  </TouchableOpacity>
-                </View>
-                {repliques.length >= 2 && (
-                  <TouchableOpacity style={styles.chatTerminerBtn} onPress={handleTerminerDialogue}>
-                    <Text style={styles.chatTerminerText}>Terminer le dialogue →</Text>
-                  </TouchableOpacity>
+                {dialogueCorrecting ? (
+                  <View style={styles.correctingRow}>
+                    <ActivityIndicator color="#6366F1" size="small" />
+                    <Text style={styles.correctingText}>Correction orthographique en cours...</Text>
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.chatInputRow}>
+                      <TextInput
+                        style={styles.chatInput}
+                        value={replicueInput}
+                        onChangeText={setReplicueInput}
+                        placeholder="Votre réplique..."
+                        placeholderTextColor="#444444"
+                        returnKeyType="send"
+                        onSubmitEditing={handleSendReplique}
+                        blurOnSubmit={false}
+                      />
+                      <TouchableOpacity
+                        style={[styles.chatSendBtn, !replicueInput.trim() && styles.chatSendBtnDisabled]}
+                        onPress={handleSendReplique}
+                        disabled={!replicueInput.trim()}
+                      >
+                        <Text style={styles.chatSendBtnText}>Envoyer</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {repliques.length >= 2 && (
+                      <TouchableOpacity style={styles.chatTerminerBtn} onPress={handleTerminerDialogue}>
+                        <Text style={styles.chatTerminerText}>Terminer le dialogue →</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
                 )}
               </View>
             </>
@@ -1116,4 +1129,6 @@ const styles = StyleSheet.create({
   chatWaitingText: { fontSize: 14, color: '#444444', fontStyle: 'italic' },
   chatTerminerBtn: { backgroundColor: '#1A1A1A', borderRadius: 10, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: '#2A2A2A' },
   chatTerminerText: { fontSize: 14, fontWeight: '700', color: '#AAAAAA' },
+  correctingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 18 },
+  correctingText: { fontSize: 14, color: '#6366F1', fontStyle: 'italic' },
 });
