@@ -184,15 +184,17 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-app.get('/', (_req, res) => {
-  res.json({ ok: true });
-});
-
 app.get('/health', (_req, res) => {
   res.json({ ok: true, ts: Date.now(), sessions: sessions.size });
 });
 
 app.use('/assemble', assembleRouter);
+
+app.use(express.static(path.join(process.cwd(), 'dist')));
+
+app.use((_req, res) => {
+  res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));
+});
 
 const httpServer = createServer(app);
 
