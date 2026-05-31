@@ -51,8 +51,9 @@ export const EV = {
   DIALOGUE_INVITATION:        'dialogue:invitation',
   DIALOGUE_ACCEPTED:          'dialogue:accepted',
   DIALOGUE_REFUSED:           'dialogue:refused',
-  DIALOGUE_SITUATION_SYNC:    'dialogue:situation:sync',
-  DIALOGUE_CHAT_START:        'dialogue:chat:start',
+  DIALOGUE_SITUATION_SYNC:        'dialogue:situation:sync',
+  DIALOGUE_SITUATION_PEER_READY:  'dialogue:situation:peer_ready',
+  DIALOGUE_CHAT_START:            'dialogue:chat:start',
   DIALOGUE_REPLIQUE_RECEIVED: 'dialogue:replique:received',
   DIALOGUE_DONE:              'dialogue:done',
 

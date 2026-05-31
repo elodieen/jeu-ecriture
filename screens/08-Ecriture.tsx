@@ -77,6 +77,8 @@ export default function EcritureScreen() {
   const [repliques, setRepliques]         = useState<{ qui: 'moi' | 'autre'; texte: string }[]>([]);
   const [replicueInput, setReplicueInput] = useState('');
   const [tourAMoi, setTourAMoi]           = useState(true);
+  const [myPhase1Ready, setMyPhase1Ready]     = useState(false);
+  const [peerPhase1Ready, setPeerPhase1Ready] = useState(false);
 
   const chatScrollRef = useRef<ScrollView>(null);
   const pulseAnim     = useRef(new Animated.Value(1)).current;
@@ -187,6 +189,8 @@ export default function EcritureScreen() {
       setRepliques([]);
       setReplicueInput('');
       setPhase1Sec(60);
+      setMyPhase1Ready(false);
+      setPeerPhase1Ready(false);
       setDialogueState('phase1');
     });
 
@@ -199,6 +203,10 @@ export default function EcritureScreen() {
 
     socket.on('dialogue:situation:sync', ({ text }: { text: string }) => {
       setSituationText(text);
+    });
+
+    socket.on('dialogue:situation:peer_ready', () => {
+      setPeerPhase1Ready(true);
     });
 
     socket.on('dialogue:chat:start', ({ myTurn }: { myTurn: boolean }) => {
@@ -239,6 +247,7 @@ export default function EcritureScreen() {
       socket.off('dialogue:accepted');
       socket.off('dialogue:refused');
       socket.off('dialogue:situation:sync');
+      socket.off('dialogue:situation:peer_ready');
       socket.off('dialogue:chat:start');
       socket.off('dialogue:replique:received');
       socket.off('dialogue:done');
@@ -294,7 +303,7 @@ export default function EcritureScreen() {
     setDialogueState('idle');
     setDialogueTarget(null);
   }
-  function handlePhase1Ready() { getSocket().emit('dialogue:situation:ready'); }
+  function handlePhase1Ready() { setMyPhase1Ready(true); getSocket().emit('dialogue:situation:ready'); }
   function handleSendReplique() {
     const text = replicueInput.trim(); if (!text) return;
     getSocket().emit('dialogue:replique', { text });
@@ -765,9 +774,22 @@ export default function EcritureScreen() {
                 />
               </View>
               <View style={styles.dialogueFooter}>
-                <TouchableOpacity style={styles.dialogueReadyBtn} onPress={handlePhase1Ready}>
-                  <Text style={styles.dialogueReadyBtnText}>On est prêts →</Text>
-                </TouchableOpacity>
+                {myPhase1Ready ? (
+                  <View style={styles.dialogueWaitingReady}>
+                    <Text style={styles.dialogueWaitingReadyText}>En attente de l'autre joueur...</Text>
+                  </View>
+                ) : peerPhase1Ready ? (
+                  <>
+                    <Text style={styles.dialoguePeerReadyText}>L'autre joueur est prêt — en attente de toi...</Text>
+                    <TouchableOpacity style={styles.dialogueReadyBtn} onPress={handlePhase1Ready}>
+                      <Text style={styles.dialogueReadyBtnText}>Je suis prêt aussi →</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity style={styles.dialogueReadyBtn} onPress={handlePhase1Ready}>
+                    <Text style={styles.dialogueReadyBtnText}>On est prêts →</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </>
           )}
@@ -777,8 +799,8 @@ export default function EcritureScreen() {
             <>
               <View style={styles.dialogueHeader}>
                 <Text style={styles.dialoguePhaseLabel}>PHASE 2 · 2 MINUTES</Text>
-                <Text style={[styles.dialogueTourLabel, !tourAMoi && styles.dialogueTourLabelOther]}>
-                  {tourAMoi ? `${myChar.name} parle` : `${dialogueTargetName} parle`}
+                <Text style={styles.dialogueTourLabel}>
+                  {myChar.name} + {dialogueTargetName}
                 </Text>
                 <Text style={styles.dialogueTimer}>{formatTime(phase2Sec)}</Text>
               </View>
@@ -796,39 +818,28 @@ export default function EcritureScreen() {
                     <Text style={styles.chatText}>{r.texte}</Text>
                   </View>
                 ))}
-                {!tourAMoi && (
-                  <View style={styles.chatTyping}>
-                    <Text style={styles.chatTypingText}>{dialogueTargetName} écrit...</Text>
-                  </View>
-                )}
               </ScrollView>
 
               <View style={styles.chatInputArea}>
-                {tourAMoi ? (
-                  <View style={styles.chatInputRow}>
-                    <TextInput
-                      style={styles.chatInput}
-                      value={replicueInput}
-                      onChangeText={setReplicueInput}
-                      placeholder="Votre réplique..."
-                      placeholderTextColor="#444444"
-                      returnKeyType="send"
-                      onSubmitEditing={handleSendReplique}
-                      blurOnSubmit={false}
-                    />
-                    <TouchableOpacity
-                      style={[styles.chatSendBtn, !replicueInput.trim() && styles.chatSendBtnDisabled]}
-                      onPress={handleSendReplique}
-                      disabled={!replicueInput.trim()}
-                    >
-                      <Text style={styles.chatSendBtnText}>Envoyer</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <View style={styles.chatWaitingRow}>
-                    <Text style={styles.chatWaitingText}>En attente de {dialogueTargetName}...</Text>
-                  </View>
-                )}
+                <View style={styles.chatInputRow}>
+                  <TextInput
+                    style={styles.chatInput}
+                    value={replicueInput}
+                    onChangeText={setReplicueInput}
+                    placeholder="Votre réplique..."
+                    placeholderTextColor="#444444"
+                    returnKeyType="send"
+                    onSubmitEditing={handleSendReplique}
+                    blurOnSubmit={false}
+                  />
+                  <TouchableOpacity
+                    style={[styles.chatSendBtn, !replicueInput.trim() && styles.chatSendBtnDisabled]}
+                    onPress={handleSendReplique}
+                    disabled={!replicueInput.trim()}
+                  >
+                    <Text style={styles.chatSendBtnText}>Envoyer</Text>
+                  </TouchableOpacity>
+                </View>
                 {repliques.length >= 2 && (
                   <TouchableOpacity style={styles.chatTerminerBtn} onPress={handleTerminerDialogue}>
                     <Text style={styles.chatTerminerText}>Terminer le dialogue →</Text>
@@ -1079,6 +1090,9 @@ const styles = StyleSheet.create({
   dialogueFooter: { paddingHorizontal: 28, paddingBottom: 40, paddingTop: 12 },
   dialogueReadyBtn: { backgroundColor: '#FFFFFF', paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
   dialogueReadyBtnText: { fontSize: 16, fontWeight: '700', color: '#111111' },
+  dialogueWaitingReady: { backgroundColor: '#1A1A1A', borderRadius: 12, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#2A2A2A' },
+  dialogueWaitingReadyText: { fontSize: 14, color: '#555555', fontStyle: 'italic' },
+  dialoguePeerReadyText: { fontSize: 14, color: '#4ADE80', textAlign: 'center', marginBottom: 12 },
 
   // Phase 2 — chat
   chatScroll: { flex: 1 },

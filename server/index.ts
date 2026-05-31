@@ -220,15 +220,31 @@ function startChatPhase(session: Session, sessionCode: string, dialogue: Dialogu
   io.to(dialogue.socketA).emit(EV.DIALOGUE_CHAT_START, { myTurn: dialogue.currentTurn === dialogue.socketA });
   io.to(dialogue.socketB).emit(EV.DIALOGUE_CHAT_START, { myTurn: dialogue.currentTurn === dialogue.socketB });
   dialogue.chatTimer = setTimeout(() => {
-    if (dialogue.phase === 'chat') finishDialogue(session, sessionCode, dialogue);
+    if (dialogue.phase === 'chat') finishDialogue(session, sessionCode, dialogue).catch(err => console.error('[dialogue] finishDialogue error:', err));
   }, 120_000);
   console.log(`[dialogue] ${sessionCode} — phase chat démarrée`);
 }
 
-function finishDialogue(session: Session, sessionCode: string, dialogue: Dialogue): void {
+async function correctReplique(text: string): Promise<string> {
+  try {
+    const msg = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 500,
+      messages: [{ role: 'user', content: `Corrige uniquement les fautes d'orthographe et de grammaire dans ce texte. Ne change pas le style, le vocabulaire, les tournures de phrases, ni le sens. Retourne uniquement le texte corrigé sans commentaire.\n\n${text}` }],
+    });
+    return (msg.content[0] as { type: string; text: string }).text.trim();
+  } catch {
+    return text;
+  }
+}
+
+async function finishDialogue(session: Session, sessionCode: string, dialogue: Dialogue): Promise<void> {
   dialogue.phase = 'done';
   if (dialogue.chatTimer) { clearTimeout(dialogue.chatTimer); dialogue.chatTimer = null; }
-  const payload = { situation: dialogue.situationText, repliques: dialogue.repliques };
+  const correctedRepliques = await Promise.all(
+    dialogue.repliques.map(async r => ({ ...r, text: await correctReplique(r.text) }))
+  );
+  const payload = { situation: dialogue.situationText, repliques: correctedRepliques };
   io.to(dialogue.socketA).emit(EV.DIALOGUE_DONE, payload);
   io.to(dialogue.socketB).emit(EV.DIALOGUE_DONE, payload);
   session.dialogueUsed.add(dialogue.socketA);
@@ -236,7 +252,7 @@ function finishDialogue(session: Session, sessionCode: string, dialogue: Dialogu
   session.dialogueBusy.delete(dialogue.socketA);
   session.dialogueBusy.delete(dialogue.socketB);
   session.activeDialogues.delete(dialogue.id);
-  console.log(`[dialogue] ${sessionCode} — terminé (${dialogue.repliques.length} répliques)`);
+  console.log(`[dialogue] ${sessionCode} — terminé (${dialogue.repliques.length} répliques, correction appliquée)`);
 }
 
 function startTimer(session: Session, sessionCode: string) {
@@ -698,6 +714,9 @@ io.on('connection', (socket) => {
     if (d.situationReadySet.size >= 2) {
       if (d.situationTimer) { clearTimeout(d.situationTimer); d.situationTimer = null; }
       startChatPhase(session, sessionCode, d);
+    } else {
+      const otherSocket = d.socketA === socket.id ? d.socketB : d.socketA;
+      io.to(otherSocket).emit(EV.DIALOGUE_SITUATION_PEER_READY);
     }
   });
 
@@ -709,11 +728,10 @@ io.on('connection', (socket) => {
     }
     if (!session) return;
     const d = findDialogue(session, socket.id);
-    if (!d || d.phase !== 'chat' || d.currentTurn !== socket.id) return;
+    if (!d || d.phase !== 'chat') return;
     const charId = d.socketA === socket.id ? d.charA : d.charB;
     const replique: DialogueReplique = { characterId: charId, text };
     d.repliques.push(replique);
-    d.currentTurn = d.socketA === socket.id ? d.socketB : d.socketA;
     io.to(d.socketA).emit(EV.DIALOGUE_REPLIQUE_RECEIVED, replique);
     io.to(d.socketB).emit(EV.DIALOGUE_REPLIQUE_RECEIVED, replique);
     console.log(`[dialogue] ${sessionCode} — réplique (${d.repliques.length} total)`);
@@ -731,7 +749,7 @@ io.on('connection', (socket) => {
     d.terminerSet.add(socket.id);
     if (d.terminerSet.size >= 2) {
       if (d.chatTimer) { clearTimeout(d.chatTimer); d.chatTimer = null; }
-      finishDialogue(session, sessionCode, d);
+      finishDialogue(session, sessionCode, d).catch(err => console.error('[dialogue] finishDialogue error:', err));
     }
   });
 

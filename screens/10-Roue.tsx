@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity,
-  SafeAreaView, Animated, Pressable, ActivityIndicator,
+  SafeAreaView, Animated, Pressable, ActivityIndicator, Platform,
 } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -27,6 +27,7 @@ export default function RoueScreen() {
   const secretBtnAnim = useRef(new Animated.Value(0)).current;
   const notifAnim     = useRef(new Animated.Value(0)).current;
   const btnAnim       = useRef(new Animated.Value(0)).current;
+  const blinkAnim     = useRef(new Animated.Value(1)).current;
 
   // Prevents double-flip regardless of step state
   const hasFlipped = useRef(false);
@@ -35,6 +36,23 @@ export default function RoueScreen() {
   useEffect(() => {
     latestNotifRef.current = roueNotification?.roueNumber === roueNumber ? roueNotification : null;
   });
+
+  // Blink animation — runs only while card is untouched
+  useEffect(() => {
+    if (step !== 'initial') {
+      blinkAnim.stopAnimation();
+      blinkAnim.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(blinkAnim, { toValue: 0.4, duration: 750, useNativeDriver: false }),
+        Animated.timing(blinkAnim, { toValue: 1,   duration: 750, useNativeDriver: false }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [step]);
 
   const roue = useMemo(() => derniereSaison.roues.find(r => r.number === roueNumber)!, [roueNumber]);
 
@@ -78,6 +96,10 @@ export default function RoueScreen() {
     });
   }
 
+  const cardBackShadow = Platform.OS === 'web'
+    ? ({ boxShadow: '0 0 12px rgba(255,255,255,0.15), 0 0 24px rgba(255,255,255,0.08)' } as object)
+    : {};
+
   const notifLabel =
     notification?.type === 'FAILLE'     ? 'Ta faille' :
     notification?.type === 'MOTIVATION' ? 'Ta motivation' :
@@ -116,14 +138,16 @@ export default function RoueScreen() {
 
             {/* Dos décoratif */}
             <Animated.View style={[StyleSheet.absoluteFill, { opacity: frontOpacity }]}>
-              <View style={[StyleSheet.absoluteFill, styles.cardBack]}>
-                <View style={styles.cardBackInsetBorder} />
-                <View style={styles.cardBackOrnament}>
-                  <View style={styles.cardBackDiamond} />
-                  <View style={styles.cardBackDot} />
+              <Animated.View style={[StyleSheet.absoluteFill, { opacity: blinkAnim }]}>
+                <View style={[StyleSheet.absoluteFill, styles.cardBack, cardBackShadow]}>
+                  <View style={styles.cardBackInsetBorder} />
+                  <View style={styles.cardBackOrnament}>
+                    <View style={styles.cardBackDiamond} />
+                    <View style={styles.cardBackDot} />
+                  </View>
+                  <Text style={styles.cardBackHint}>{cardHintText}</Text>
                 </View>
-                <Text style={styles.cardBackHint}>{cardHintText}</Text>
-              </View>
+              </Animated.View>
             </Animated.View>
 
           </Animated.View>
@@ -198,14 +222,14 @@ const styles = StyleSheet.create({
   contrainte: { fontSize: 15, color: '#EEEEEE', lineHeight: 24, fontStyle: 'italic', textAlign: 'center' },
 
   cardBack: {
-    backgroundColor: '#1A1A1A', borderRadius: 16, borderWidth: 1, borderColor: '#2A2A2A',
+    backgroundColor: '#2D2D2D', borderRadius: 16, borderWidth: 1, borderColor: '#888888',
     alignItems: 'center', justifyContent: 'center', gap: 20,
   },
-  cardBackInsetBorder: { position: 'absolute', top: 12, left: 12, right: 12, bottom: 12, borderWidth: 1, borderColor: '#222222', borderRadius: 10 },
+  cardBackInsetBorder: { position: 'absolute', top: 12, left: 12, right: 12, bottom: 12, borderWidth: 1, borderColor: '#444444', borderRadius: 10 },
   cardBackOrnament: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center' },
-  cardBackDiamond: { position: 'absolute', width: 52, height: 52, borderWidth: 1, borderColor: '#333333', transform: [{ rotate: '45deg' }] },
-  cardBackDot: { position: 'absolute', width: 9, height: 9, backgroundColor: '#282828', transform: [{ rotate: '45deg' }] },
-  cardBackHint: { fontSize: 11, color: '#333333', letterSpacing: 2, textTransform: 'uppercase' },
+  cardBackDiamond: { position: 'absolute', width: 52, height: 52, borderWidth: 1, borderColor: '#AAAAAA', transform: [{ rotate: '45deg' }] },
+  cardBackDot: { position: 'absolute', width: 9, height: 9, backgroundColor: '#3A3A3A', transform: [{ rotate: '45deg' }] },
+  cardBackHint: { fontSize: 11, color: '#AAAAAA', letterSpacing: 2, textTransform: 'uppercase' },
 
   secretBtnWrapper: { width: '100%' },
   secretBtn: { backgroundColor: '#120A0A', borderRadius: 12, borderWidth: 1, borderColor: '#3A1818', paddingVertical: 14, paddingHorizontal: 20, gap: 6 },
