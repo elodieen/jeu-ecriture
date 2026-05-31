@@ -4,10 +4,18 @@ import Constants from 'expo-constants';
 
 const SERVER_PORT = 3001;
 
+function isProductionWeb(): boolean {
+  return (
+    Platform.OS === 'web' &&
+    typeof window !== 'undefined' &&
+    window.location?.hostname !== 'localhost'
+  );
+}
+
 function resolveServerUrl(): string {
   if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined' && window.location?.hostname !== 'localhost') {
-      // Production : backend servi depuis la même origine que le frontend.
+    if (isProductionWeb()) {
+      // window.location.origin inclut le protocole correct : https:// en prod, http:// en local.
       return window.location.origin;
     }
     return `http://localhost:${SERVER_PORT}`;
@@ -28,7 +36,10 @@ let socket: Socket | null = null;
 
 export function getSocket(): Socket {
   if (!socket) {
-    socket = io(resolveServerUrl(), { autoConnect: false });
+    const url = resolveServerUrl();
+    socket = isProductionWeb()
+      ? io(url, { autoConnect: false, secure: true, transports: ['websocket', 'polling'] })
+      : io(url, { autoConnect: false });
   }
   return socket;
 }
