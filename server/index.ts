@@ -38,6 +38,7 @@ import assembleRouter from './routes/assemble';
 import { EV } from './events';
 import { derniereSaison } from '../data/scenarios/derniere-saison';
 
+console.log('[boot] variables d\'environnement disponibles :', Object.keys(process.env).sort().join(', '));
 console.log('[boot] ANTHROPIC_API_KEY présente :', !!process.env.ANTHROPIC_API_KEY, '| longueur :', process.env.ANTHROPIC_API_KEY?.length ?? 0);
 if (!process.env.ANTHROPIC_API_KEY) {
   console.error('[boot] FATAL: ANTHROPIC_API_KEY manquante — définir la variable dans Railway');
