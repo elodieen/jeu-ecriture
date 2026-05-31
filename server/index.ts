@@ -5,6 +5,15 @@ dotenv.config(); // fallback to .env if .env.server is absent
 // Contourne la vérification SSL (certificat réseau non reconnu par Node.js sur Windows)
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
+process.on('uncaughtException', (err) => {
+  console.error('[fatal] uncaughtException:', err);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[fatal] unhandledRejection:', reason);
+  process.exit(1);
+});
+
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -30,6 +39,10 @@ import { EV } from './events';
 import { derniereSaison } from '../data/scenarios/derniere-saison';
 
 console.log('[boot] ANTHROPIC_API_KEY présente :', !!process.env.ANTHROPIC_API_KEY, '| longueur :', process.env.ANTHROPIC_API_KEY?.length ?? 0);
+if (!process.env.ANTHROPIC_API_KEY) {
+  console.error('[boot] FATAL: ANTHROPIC_API_KEY manquante — définir la variable dans Railway');
+  process.exit(1);
+}
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const TEXTE_FICTIF = `Aliénor traverse la salle sans regarder personne. Ses talons sur le parquet de chêne marquent chaque pas d'une précision froide, comme si elle avait compté les battements à l'avance.\n\nDepuis l'entrée, Edran l'observe. Un verre à la main, il ne bouge pas. Il y a dans son immobilité quelque chose qui ressemble à de la patience — ou à de la résignation, difficile de distinguer les deux à cette distance.\n\nHadrien, lui, cherche sa mère des yeux. Il pivote lentement, balayant les visages. La salle est pleine et pourtant chaque regard qu'il croise glisse ailleurs, comme si personne ne voulait être celui qui lui répond.`;
@@ -169,6 +182,10 @@ function makeCode(): string {
 const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
+
+app.get('/', (_req, res) => {
+  res.json({ ok: true });
+});
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, ts: Date.now(), sessions: sessions.size });
