@@ -92,7 +92,7 @@ Tu réponds uniquement avec le texte assemblé. Aucun commentaire avant. Aucun c
   }
 }
 
-const PORT = 3001;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 
 // ── Session store ──────────────────────────────────────────────────────────
 
