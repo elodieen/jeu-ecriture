@@ -79,7 +79,9 @@ export default function EcritureScreen() {
   const [tourAMoi, setTourAMoi]           = useState(true);
   const [myPhase1Ready, setMyPhase1Ready]       = useState(false);
   const [peerPhase1Ready, setPeerPhase1Ready]   = useState(false);
-  const [dialogueCorrecting, setDialogueCorrecting] = useState(false);
+  const [dialogueCorrecting, setDialogueCorrecting]           = useState(false);
+  const [dialoguePeerQuitVisible, setDialoguePeerQuitVisible] = useState(false);
+  const [peerQuitCountdown, setPeerQuitCountdown]             = useState(5);
 
   const chatScrollRef = useRef<ScrollView>(null);
   const pulseAnim     = useRef(new Animated.Value(1)).current;
@@ -95,12 +97,17 @@ export default function EcritureScreen() {
   }
 
   // Stable refs for use inside effects
-  const repliquesRef       = useRef(repliques);
-  const dialogueTargetRef  = useRef(dialogueTarget);
-  const situationTextRef   = useRef(situationText);
+  const repliquesRef             = useRef(repliques);
+  const dialogueTargetRef        = useRef(dialogueTarget);
+  const situationTextRef         = useRef(situationText);
+  const dialogueCorrectingRef    = useRef(false);
+  const dialogueOtherCharIdRef   = useRef<string | null>(null);
+  const pendingDialogueResultRef = useRef<{ situation: string; repliques: Array<{ characterId: string; text: string }> } | null>(null);
   useEffect(() => { repliquesRef.current = repliques; }, [repliques]);
   useEffect(() => { dialogueTargetRef.current = dialogueTarget; }, [dialogueTarget]);
   useEffect(() => { situationTextRef.current = situationText; }, [situationText]);
+  useEffect(() => { dialogueCorrectingRef.current = dialogueCorrecting; }, [dialogueCorrecting]);
+  useEffect(() => { dialogueOtherCharIdRef.current = dialogueOtherCharId; }, [dialogueOtherCharId]);
 
   // ── Derived ──
   // secondes is null until writing:start arrives — keeps expired popup from
@@ -172,6 +179,14 @@ export default function EcritureScreen() {
     return () => clearInterval(id);
   }, [phase2Sec, dialogueState]);
 
+  // ── Peer-quit countdown ──
+  useEffect(() => {
+    if (!dialoguePeerQuitVisible) return;
+    if (peerQuitCountdown <= 0) { handleDismissPeerQuit(); return; }
+    const id = setInterval(() => setPeerQuitCountdown(s => s - 1), 1000);
+    return () => clearInterval(id);
+  }, [peerQuitCountdown, dialoguePeerQuitVisible]);
+
   // ── Socket listeners — dialogue temps réel ──
   useEffect(() => {
     const socket = getSocket();
@@ -193,6 +208,10 @@ export default function EcritureScreen() {
       setMyPhase1Ready(false);
       setPeerPhase1Ready(false);
       setDialogueCorrecting(false);
+      dialogueCorrectingRef.current = false;
+      pendingDialogueResultRef.current = null;
+      setDialoguePeerQuitVisible(false);
+      setPeerQuitCountdown(5);
       setDialogueState('phase1');
     });
 
@@ -224,8 +243,16 @@ export default function EcritureScreen() {
     });
 
     socket.on('dialogue:done', ({ situation, repliques: reps }: { situation: string; repliques: Array<{ characterId: string; text: string }> }) => {
+      const wasOurs = dialogueCorrectingRef.current;
+      dialogueCorrectingRef.current = false;
       setDialogueCorrecting(false);
-      const otherCharId = dialogueOtherCharId ?? dialogueTargetRef.current ?? '';
+      if (!wasOurs) {
+        pendingDialogueResultRef.current = { situation, repliques: reps };
+        setPeerQuitCountdown(5);
+        setDialoguePeerQuitVisible(true);
+        return;
+      }
+      const otherCharId = dialogueOtherCharIdRef.current ?? dialogueTargetRef.current ?? '';
       const otherName = derniereSaison.characters.find(c => c.id === otherCharId)?.name ?? 'Autre';
       const parts: string[] = [];
       if (situation) parts.push(`[Situation : ${situation}]`);
@@ -271,8 +298,33 @@ export default function EcritureScreen() {
   }
 
   function handleTerminerDialogue() {
+    dialogueCorrectingRef.current = true;
     setDialogueCorrecting(true);
     getSocket().emit('dialogue:terminer');
+  }
+  function handleDismissPeerQuit() {
+    const pending = pendingDialogueResultRef.current;
+    pendingDialogueResultRef.current = null;
+    setDialoguePeerQuitVisible(false);
+    if (!pending) return;
+    const otherCharId = dialogueOtherCharIdRef.current ?? dialogueTargetRef.current ?? '';
+    const otherName = derniereSaison.characters.find(c => c.id === otherCharId)?.name ?? 'Autre';
+    const parts: string[] = [];
+    if (pending.situation) parts.push(`[Situation : ${pending.situation}]`);
+    if (pending.repliques.length > 0) {
+      parts.push(pending.repliques.map(r => {
+        const n = r.characterId === myCharId ? myChar.name : otherName;
+        return `— ${n} : ${r.text}`;
+      }).join('\n'));
+    }
+    if (parts.length > 0) {
+      const insert = parts.join('\n');
+      setTexte(prev => prev + (prev.length > 0 && !prev.endsWith('\n') ? '\n\n' : '') + insert);
+    }
+    setDialogueUsed(true);
+    setDialogueState('idle');
+    setDialogueTarget(null);
+    setDialogueOtherCharId(null);
   }
 
   // ── Handlers: timer ──
@@ -862,6 +914,26 @@ export default function EcritureScreen() {
             </>
           )}
 
+          {/* ─── Popup interlocuteur parti ─── */}
+          <Modal
+            visible={dialoguePeerQuitVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => {}}
+          >
+            <View style={styles.peerQuitBackdrop}>
+              <View style={styles.peerQuitCard}>
+                <Text style={styles.peerQuitTitle}>Votre interlocuteur{'\n'}a quitté le dialogue</Text>
+                <View style={styles.peerQuitCountdownCircle}>
+                  <Text style={styles.peerQuitCountdownNum}>{peerQuitCountdown}</Text>
+                </View>
+                <TouchableOpacity style={styles.peerQuitBtn} onPress={handleDismissPeerQuit}>
+                  <Text style={styles.peerQuitBtnText}>OK</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+
         </SafeAreaView>
       </Modal>
 
@@ -1131,4 +1203,11 @@ const styles = StyleSheet.create({
   chatTerminerText: { fontSize: 14, fontWeight: '700', color: '#AAAAAA' },
   correctingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 18 },
   correctingText: { fontSize: 14, color: '#6366F1', fontStyle: 'italic' },
+  peerQuitBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center', padding: 32 },
+  peerQuitCard: { backgroundColor: '#1A1A1A', borderRadius: 16, padding: 28, width: '100%', maxWidth: 360, alignItems: 'center', gap: 18, borderWidth: 1, borderColor: '#2A2A2A' },
+  peerQuitTitle: { fontSize: 17, fontWeight: '700', color: '#FFFFFF', textAlign: 'center', lineHeight: 26 },
+  peerQuitCountdownCircle: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#222222', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#333333' },
+  peerQuitCountdownNum: { fontSize: 22, fontWeight: '800', color: '#888888' },
+  peerQuitBtn: { backgroundColor: '#FFFFFF', borderRadius: 10, paddingVertical: 14, paddingHorizontal: 48, alignItems: 'center' },
+  peerQuitBtnText: { fontSize: 15, fontWeight: '700', color: '#111111' },
 });
