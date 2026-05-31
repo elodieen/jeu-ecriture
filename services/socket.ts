@@ -6,13 +6,11 @@ const SERVER_PORT = 3001;
 
 function resolveServerUrl(): string {
   if (Platform.OS === 'web') {
-    // On web, the app and the server share the same machine.
-    // window.location.hostname gives the real IP when opened from a phone.
-    const host =
-      typeof window !== 'undefined' && window.location?.hostname
-        ? window.location.hostname
-        : 'localhost';
-    return `http://${host}:${SERVER_PORT}`;
+    if (typeof window !== 'undefined' && window.location?.hostname !== 'localhost') {
+      // Production : backend servi depuis la même origine que le frontend.
+      return window.location.origin;
+    }
+    return `http://localhost:${SERVER_PORT}`;
   }
 
   // On native, Expo injects the dev-server address as "host:port" (e.g. "192.168.1.15:8082").
